@@ -1,3 +1,6 @@
+#command to execute
+#python tensorflow_infer.py  --img-mode 0 --img-path '..\..\darknet\maskimage\retail store.jpeg'
+
 # -*- coding:utf-8 -*-
 import cv2
 import time
@@ -10,6 +13,7 @@ from utils.anchor_generator import generate_anchors
 from utils.anchor_decode import decode_bbox
 from utils.nms import single_class_non_max_suppression
 from load_model.tensorflow_loader import load_tf_model, tf_inference
+import TelegramBot
 
 sess, graph = load_tf_model('models/face_mask_detection.pb')
 # anchor configuration
@@ -48,10 +52,13 @@ def inference(image,
     output_info = []
     height, width, _ = image.shape
     image_resized = cv2.resize(image, target_shape)
+    print (image_resized.shape)
     image_np = image_resized / 255.0  # 归一化到0~1
     image_exp = np.expand_dims(image_np, axis=0)
     y_bboxes_output, y_cls_output = tf_inference(sess, graph, image_exp)
 
+    #print (y_bboxes_output)
+    #print (y_cls_output)
     # remove the batch dimension, for batch is always 1 for inference.
     y_bboxes = decode_bbox(anchors_exp, y_bboxes_output)[0]
     y_cls = y_cls_output[0]
@@ -66,6 +73,8 @@ def inference(image,
                                                  iou_thresh=iou_thresh,
                                                  )
 
+    print ("print keep index")
+    print (keep_idxs)
     for idx in keep_idxs:
         conf = float(bbox_max_scores[idx])
         class_id = bbox_max_score_classes[idx]
@@ -84,6 +93,14 @@ def inference(image,
             cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 2)
             cv2.putText(image, "%s: %.2f" % (id2class[class_id], conf), (xmin + 2, ymin - 2),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, color)
+        print ("##### Predicted Class %s" %class_id)
+        print (type(class_id))
+        print ("##### Confidence Level %s" %conf)
+        if class_id == 1:
+            print ("violation")
+            #TelegramBot.send_violation_text()
+
+
         output_info.append([class_id, conf, xmin, ymin, xmax, ymax])
 
     if show_result:
