@@ -2,19 +2,19 @@
 #python tensorflow_infer.py  --img-mode 0 --img-path '..\..\darknet\maskimage\retail store.jpeg'
 
 # -*- coding:utf-8 -*-
+import serial
 import cv2
 import time
 import argparse
 
 import numpy as np
 from PIL import Image
-#from keras.models import model_from_json
 from utils.anchor_generator import generate_anchors
 from utils.anchor_decode import decode_bbox
 from utils.nms import single_class_non_max_suppression
 from load_model.tensorflow_loader import load_tf_model, tf_inference
+from sort import Sort
 import TelegramBot
-
 sess, graph = load_tf_model('models/face_mask_detection.pb')
 # anchor configuration
 feature_map_sizes = [[33, 33], [17, 17], [9, 9], [5, 5], [3, 3]]
@@ -30,13 +30,12 @@ anchors_exp = np.expand_dims(anchors, axis=0)
 
 id2class = {0: 'Mask', 1: 'NoMask'}
 
-
 def inference(image,
               conf_thresh=0.5,
               iou_thresh=0.4,
               target_shape=(160, 160),
               draw_result=True,
-              show_result=True
+              show_result=True,
               ):
     '''
     Main function of detection inference
@@ -48,17 +47,13 @@ def inference(image,
     :param show_result: whether to display the image.
     :return:
     '''
-    # image = np.copy(image)
     output_info = []
     height, width, _ = image.shape
     image_resized = cv2.resize(image, target_shape)
-    print (image_resized.shape)
-    image_np = image_resized / 255.0  # 归一化到0~1
+    image_np = image_resized / 255.0
     image_exp = np.expand_dims(image_np, axis=0)
     y_bboxes_output, y_cls_output = tf_inference(sess, graph, image_exp)
 
-    #print (y_bboxes_output)
-    #print (y_cls_output)
     # remove the batch dimension, for batch is always 1 for inference.
     y_bboxes = decode_bbox(anchors_exp, y_bboxes_output)[0]
     y_cls = y_cls_output[0]
@@ -73,8 +68,6 @@ def inference(image,
                                                  iou_thresh=iou_thresh,
                                                  )
 
-    print ("print keep index")
-    print (keep_idxs)
     for idx in keep_idxs:
         conf = float(bbox_max_scores[idx])
         class_id = bbox_max_score_classes[idx]
@@ -84,6 +77,7 @@ def inference(image,
         ymin = max(0, int(bbox[1] * height))
         xmax = min(int(bbox[2] * width), width)
         ymax = min(int(bbox[3] * height), height)
+        result = np.array([xmin,ymin,xmax,ymax])
 
         if draw_result:
             if class_id == 0:
@@ -93,24 +87,23 @@ def inference(image,
             cv2.rectangle(image, (xmin, ymin), (xmax, ymax), color, 2)
             cv2.putText(image, "%s: %.2f" % (id2class[class_id], conf), (xmin + 2, ymin - 2),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, color)
-        print ("##### Predicted Class %s" %class_id)
-        print (type(class_id))
-        print ("##### Confidence Level %s" %conf)
-        if class_id == 1:
-            print ("violation")
-            #TelegramBot.send_violation_text()
-
 
         output_info.append([class_id, conf, xmin, ymin, xmax, ymax])
         #output_info.append([conf, xmin, ymin, xmax, ymax,class_id])
 
     if show_result:
         Image.fromarray(image).show()
+
+    print (output_info)
     return output_info
 
 
 def run_on_video(video_path, output_video_name, conf_thresh):
     cap = cv2.VideoCapture(video_path)
+    mot_tracker = Sort()
+    object_set = set
+    object_list = []
+    tracker = []
     height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
     width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -128,12 +121,63 @@ def run_on_video(video_path, output_video_name, conf_thresh):
         img_raw = cv2.cvtColor(img_raw, cv2.COLOR_BGR2RGB)
         read_frame_stamp = time.time()
         if (status):
-            inference(img_raw,
-                      conf_thresh,
+            result = inference(img_raw,
+                      conf_thresh=conf_thresh,
                       iou_thresh=0.5,
                       target_shape=(260, 260),
                       draw_result=True,
                       show_result=False)
+            ## result format [1, 0.9675389528274536, 284, 143, 450, 391]
+            ## class label, confidence,xmin,ymin,xmax and ymax
+            print ("result %s" %result)
+            #print ("confidence %s" %str(result[0][1]))
+            result = np.array(result)
+            if len(result) > 0:
+                detect = result[:, 2:]
+                print ("detect %s" %detect)
+                if 1 in result[:,0]:
+                    trackers = mot_tracker.update(detect)
+                    print("trackers %s" % trackers)
+                    #print ("I am here Violation")
+                    if len(object_list) == 0:
+                        print ("--------   Need To Send Alert")
+                        TelegramBot.send_violation_text()
+                        #trackers = mot_tracker.update(detect)
+                        #print (type(trackers))
+                        object_list.append(trackers[:,4])
+                        print (object_list)
+                    else:
+                        #trackers = mot_tracker.update(detect)
+                        tracked_id = list(trackers[:,4])
+                        print (type(tracked_id))
+                        print (type(object_list))
+                        if len(tracked_id) > 0 and len(object_list) > 0:
+                            tracked_id.sort()
+                            object_list.sort()
+                            if tracked_id in object_list:
+                                print ("#######  Alert already sent for one of the tracked object")
+                            else:
+                                object_list = []
+                                print ("********  sending alert as there is a violation")
+                                TelegramBot.send_violation_text()
+                                object_list.append(trackers[:,4])
+                        else:
+                            object_list = []
+                        #print (type(trackers))
+                        print ("---------------------")
+                        #print (type(tracked_id))
+                        print ("tracked id %s" %tracked_id)
+                        print ("*********************")
+                    #print (np.in1d[object_list,tracked_id])
+                else:
+                    object_list = []
+            else:
+                ##print ("######   initializing object list for empty frame")
+                object_list = []
+
+                #print (len(trackers))
+                #print ("trackers %s" %trackers)
+                #writeText(img_raw)
             cv2.imshow('image', img_raw[:, :, ::-1])
             cv2.waitKey(1)
             inference_stamp = time.time()
@@ -141,10 +185,29 @@ def run_on_video(video_path, output_video_name, conf_thresh):
             write_frame_stamp = time.time()
             idx += 1
             print("%d of %d" % (idx, total_frames))
-            print("read_frame:%f, infer time:%f, write time:%f" % (read_frame_stamp - start_stamp,
+            print("frame number:%f, read_frame:%f, infer time:%f, write time:%f" % (idx,read_frame_stamp - start_stamp,
                                                                    inference_stamp - read_frame_stamp,
                                                                    write_frame_stamp - inference_stamp))
+
+        conidence_level = result[0][1]
+        if conidence_level >= .95:
+            print ("******************* Good Confidence Capturing Image %f" %conidence_level)
+            status = False
     # writer.release()
+
+    cap.release()
+
+def sensor_poll():
+    ser = serial.Serial('COM3', 9600)
+
+    while(True):
+        b = ser.readline()
+        gesture = b.decode().split()[-2]
+        if gesture == "UP":
+            video_path = 0
+            run_on_video(video_path, '', conf_thresh=0.5)
+            gesture = "STOP"
+
 
 
 if __name__ == "__main__":
@@ -154,13 +217,15 @@ if __name__ == "__main__":
     parser.add_argument('--video-path', type=str, default='0', help='path to your video, `0` means to use camera.')
     # parser.add_argument('--hdf5', type=str, help='keras hdf5 file')
     args = parser.parse_args()
+
     if args.img_mode:
         imgPath = args.img_path
         img = cv2.imread(imgPath)
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        inference(img, show_result=True, target_shape=(260, 260))
+        inference(img,show_result=True, target_shape=(260, 260))
     else:
         video_path = args.video_path
         if args.video_path == '0':
             video_path = 0
-        run_on_video(video_path, '', conf_thresh=0.5)
+        sensor_poll()
+        #run_on_video(video_path, '', conf_thresh=0.5)
