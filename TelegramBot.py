@@ -1,4 +1,5 @@
 import requests
+import telegram
 
 token_id = '739048528:AAFNZykMy9pPbywqBDRCTn8dhOiEwZrp4CM'
 
@@ -20,7 +21,9 @@ def send_violation_text():
                 bot_chatID + '&parse_mode=Markdown&text=' + \
                 bot_message
 
+
     response = requests.get(send_text)
+    telegram.bot.serialization
 
     print (response.json())
 

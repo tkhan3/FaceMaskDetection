@@ -21,11 +21,20 @@ def main():
             minSize=(20, 20)
         )
         for (x, y, w, h) in faces:
+            print (x)
+            print (y)
+            print (w)
+            print (h)
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
             roi_gray = gray[y:y + h, x:x + w]
             roi_color = img[y:y + h, x:x + w]
 
         cv2.imshow('video', img)
+        print ("no face")
+        if x > 0 and y > 0 and w > 0 and h > 0:
+            print ("Face Detected")
+            cv2.imwrite("C:\\tanveer\\images\\tanveer.jpg",img)
+            #break
         k = cv2.waitKey(30) & 0xff
         if k == 27:  # press 'ESC' to quit
             break

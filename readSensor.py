@@ -3,8 +3,8 @@ import time
 
 def main():
     print ("inside main")
-    ser = serial.Serial('COM5', 115200)
-    #ser = serial.Serial('COM3', 9600)
+    #ser = serial.Serial('COM5', 115200)
+    ser = serial.Serial('COM3', 9600)
 
     data = []
 

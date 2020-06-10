@@ -116,6 +116,7 @@ def run_on_video(video_path, output_video_name, conf_thresh):
         return
     status = True
     idx = 0
+    frame_alert_sent = 0
     while status:
         start_stamp = time.time()
         status, img_raw = cap.read()
@@ -138,21 +139,30 @@ def run_on_video(video_path, output_video_name, conf_thresh):
                 detect = result[:, 2:]
                 print ("detect %s" %detect)
                 #trackers = mot_tracker.update(detect)
+                trackers = mot_tracker.update(detect)
                 if 1 in result[:,0]:
-                    trackers = mot_tracker.update(detect)
+                    #trackers = mot_tracker.update(detect)
                     print("trackers %s" % trackers)
                     #print ("I am here Violation")
                     if len(object_list) == 0:
                         print ("--------   Need To Send Alert")
                         #TelegramBot.send_violation_text()
+                        #if (idx - frame_alert_sent) > 10:
+                        #    file_name = str(time.time()) + ".jpg"
+                        #    file_path = os.path.join("c:\\tanveer\\images", file_name)
+                        #    cv2.imwrite(file_path, img_raw)
+                        #    frame_alert_sent = idx
+                        #    object_list = list(trackers[:, 4])
+
                         file_name = str(time.time()) + ".jpg"
                         file_path = os.path.join("c:\\tanveer\\images",file_name)
                         cv2.imwrite(file_path, img_raw)
+                        object_list = list(trackers[:, 4])
                         #trackers = mot_tracker.update(detect)
                         #print (type(trackers))
                         #print ("tracker of to append")
                         #print (trackers[:,4])
-                        object_list = list(trackers[:,4])
+                        #object_list = list(trackers[:,4])
                         #print ("object list *** ")
                         #print (object_list)
                     else:
@@ -169,12 +179,14 @@ def run_on_video(video_path, output_video_name, conf_thresh):
                                 print ("#######  Alert already sent for one of the tracked object")
                             else:
                                 object_list = []
+                                #if (idx - frame_alert_sent) > 10:
                                 print ("--------   Need To Send Alert 2")
                                 file_name = str(time.time()) + ".jpg"
                                 file_path = os.path.join("c:\\tanveer\\images", file_name)
                                 cv2.imwrite(file_path, img_raw)
                                 #TelegramBot.send_violation_text()
                                 object_list = list(trackers[:,4])
+                                #frame_alert_sent = idx
                         else:
                             object_list = []
                         #print (type(trackers))
@@ -226,20 +238,11 @@ def sensor_poll():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Face Mask Detection")
-    parser.add_argument('--img-mode', type=int, default=1, help='set 1 to run on image, 0 to run on video.')
     parser.add_argument('--img-path', type=str, help='path to your image.')
-    parser.add_argument('--video-path', type=str, default='0', help='path to your video, `0` means to use camera.')
-    # parser.add_argument('--hdf5', type=str, help='keras hdf5 file')
+
     args = parser.parse_args()
 
-    if args.img_mode:
-        imgPath = args.img_path
-        img = cv2.imread(imgPath)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        inference(img,show_result=True, target_shape=(260, 260))
-    else:
-        video_path = args.video_path
-        if args.video_path == '0':
-            video_path = 0
-        #sensor_poll()
-        run_on_video(video_path, '', conf_thresh=0.5)
+
+    video_path = 1
+    #sensor_poll()
+    run_on_video(video_path, '', conf_thresh=0.5)
